@@ -1,73 +1,62 @@
 import streamlit as st
+import pandas as pd
 from PyPDF2 import PdfReader
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import pandas as pd
 
-# 1. Page Configuration
-st.set_page_config(page_title="SmartHire AI", page_icon="🤖", layout="wide")
+# Page configuration
+st.set_page_config(page_title="SmartHire AI - Resume Parser", layout="wide")
 
-st.title("🤖 SmartHire AI: Resume Ranking System")
-st.subheader("Automated NLP Screening for Recruiters")
-
-# 2. Function to extract text from PDF
 def extract_text_from_pdf(file):
-    pdf = PdfReader(file)
+    pdf_reader = PdfReader(file)
     text = ""
-    for page in pdf.pages:
+    for page in pdf_reader.pages:
         text += page.extract_text()
     return text
 
-# 3. Sidebar for Project Details (Great for your Viva!)
-with st.sidebar:
-    st.header("Project Info")
-    st.markdown("**Student:** Om Prakash")
-    st.markdown("**Tech Stack:** Python, NLP, Streamlit")
-    st.info("This system uses TF-IDF and Cosine Similarity to rank candidates.")
+def rank_resumes(job_description, resumes):
+    # Combine job description with resumes for vectorization
+    documents = [job_description] + resumes
+    vectorizer = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(documents)
+    
+    # Calculate Cosine Similarity
+    scores = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
+    return scores
 
-# 4. Input: Job Description
-st.write("---")
-jd = st.text_area("📌 Paste the Job Description (JD) here:", height=150)
+# UI Header
+st.title("🚀 SmartHire AI: Resume Ranking System")
+st.markdown("Rank candidate resumes based on job descriptions using NLP.")
 
-# 5. Input: Resume Upload
-uploaded_files = st.file_uploader("📂 Upload Candidate Resumes (PDF only)", type="pdf", accept_multiple_files=True)
+# Sidebar for Job Description
+st.sidebar.header("Job Details")
+job_description = st.sidebar.text_area("Paste the Job Description here:", height=300)
 
-# 6. Logic: Processing and Ranking
-if st.button("🚀 Rank Resumes"):
-    if jd and uploaded_files:
-        with st.spinner("AI is analyzing resumes..."):
-            resume_texts = []
-            filenames = []
+# File Uploader
+uploaded_files = st.file_uploader("Upload Resumes (PDF only)", type="pdf", accept_multiple_files=True)
 
-            for file in uploaded_files:
-                text = extract_text_from_pdf(file)
-                resume_texts.append(text)
-                filenames.append(file.name)
+if st.button("Analyze & Rank") and job_description and uploaded_files:
+    with st.spinner('Analyzing resumes...'):
+        resume_texts = []
+        file_names = []
+        
+        for file in uploaded_files:
+            text = extract_text_from_pdf(file)
+            resume_texts.append(text)
+            file_names.append(file.name)
+        
+        # Get Ranking Scores
+        scores = rank_resumes(job_description, resume_texts)
+        
+        # Display Results
+        results = pd.DataFrame({
+            "Candidate Name": file_names,
+            "Match Score (%)": [round(score * 100, 2) for score in scores]
+        }).sort_values(by="Match Score (%)", ascending=False)
+        
+        st.subheader("📊 Ranking Results")
+        st.table(results)
+        st.success("Analysis Complete!")
 
-            # Combine JD with Resumes for Vectorization
-            data = [jd] + resume_texts
-            
-            # Vectorization using TF-IDF
-            vectorizer = TfidfVectorizer(stop_words='english')
-            vectors = vectorizer.fit_transform(data)
-            
-            # Calculate Cosine Similarity
-            # First vector is JD, the rest are resumes
-            scores = cosine_similarity(vectors[0:1], vectors[1:]).flatten()
-
-            # 7. Results: Display in a Table
-            results = pd.DataFrame({
-                "Candidate Name": filenames,
-                "Match Percentage (%)": [round(s * 100, 2) for s in scores]
-            })
-
-            # Sort by highest score
-            results = results.sort_values(by="Match Percentage (%)", ascending=False)
-
-            st.success("Analysis Complete!")
-            st.table(results)
-    else:
-        st.error("Please provide both a Job Description and at least one Resume.")
-
-st.write("---")
-st.caption("Developed for MCA Minor Project - 2026")
+elif not job_description:
+    st.info("Please provide a job description in the sidebar.")
